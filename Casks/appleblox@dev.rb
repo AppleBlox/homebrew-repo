@@ -1,28 +1,15 @@
-cask "appleblox" do
-  arch arm: "arm64", intel: "x64"
+cask "appleblox@dev" do
+  version :latest
+  sha256 :no_check
 
-  version "X.Y.Z"
+  # Nightly build URL; {arch} will select arm64 or x64
+  url "https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-#{version}-dev.#{arch}.dmg.zip"
 
-  on_arm do
-    sha256 "ARM_SHA"
-  end
-  on_intel do
-    sha256 "INTEL_SHA"
-  end
-
-  url "https://github.com/AppleBlox/appleblox/releases/download/#{version}/AppleBlox-#{version}_#{arch}.dmg",
-      verified: "github.com/AppleBlox/appleblox/"
-
-  name "AppleBlox"
-  desc "⚠️ - Nightly Build of AppleBlox. Not recommended for daily use. Things could break at any time."
+  name "AppleBlox (Dev)"
+  desc "⚠️ Nightly development build of AppleBlox. Not recommended for daily use. Things could break at any time."
   homepage "https://appleblox.com/"
 
-  livecheck do
-    url :url
-    strategy :github_latest
-  end
-
-  auto_updates true
+  conflicts_with cask: "appleblox"
 
   depends_on macos: ">= :high_sierra"
   depends_on cask: "roblox"
