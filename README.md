@@ -8,8 +8,10 @@ AppleBlox is a Roblox launcher for **MacOS**, inspired by [Bloxstrap](https://gi
 
 To add this tap to your Homebrew installation:
 
+##### For now,
+
 ```zsh
-brew tap AppleBlox/appleblox
+brew tap nxfx21/homebrew-repo
 ```
 
 ## Available Casks
