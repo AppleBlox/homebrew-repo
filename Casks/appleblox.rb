@@ -20,7 +20,7 @@ cask "appleblox" do
   auto_updates true
   conflicts_with cask: "appleblox@dev"
 
-  depends_on macos: ">= 10.13"
+
   depends_on cask: "roblox"
 
   app "AppleBlox.app"
