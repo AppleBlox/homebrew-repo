@@ -17,6 +17,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Get Homebrew Info
+        id: brew-info
+        run: echo "path=$(brew --repo)/Library/Homebrew/vendor/bundle" >> $GITHUB_OUTPUT
+
+      - name: Cache Homebrew Gems
+        id: cache-gems
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.brew-info.outputs.path }}
+          key: ${{ runner.os }}-homebrew-gems-v1
+          restore-keys: |
+            ${{ runner.os }}-homebrew-gems-
+
+      - name: Install Homebrew Gems
+        run: brew install-bundler-gems --add-groups=style
+
       - name: Bump Casks
         uses: macauley/action-homebrew-bump-cask@v1
         with:
