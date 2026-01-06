@@ -34,7 +34,31 @@ jobs:
         run: brew install-bundler-gems --add-groups=style
 
       - name: Bump Casks
+        id: bump-action
         uses: macauley/action-homebrew-bump-cask@v1
+        continue-on-error: true
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           livecheck: true
+
+      - name: Bump Casks (fallback)
+        if: steps.bump-action.outcome == 'failure'
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Configure Git user
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Get list of outdated casks
+          OUTDATED=$(brew livecheck --cask --newer-only --full-name --json --tap=AppleBlox/homebrew-repo | jq -r '.[].cask' || echo "")
+          
+          if [ -z "$OUTDATED" ]; then
+            echo "No outdated casks found."
+            exit 0
+          fi
+
+          for cask in $OUTDATED; do
+            echo "Bumping $cask..."
+            brew bump-cask-pr --no-audit --no-browse --no-fork "$cask" || true
+          done
