@@ -2,8 +2,8 @@ name: Update AppleBlox Cask
 
 on:
   schedule:
-    - cron: "0 0 * * *" # Run daily at midnight UTC
-  workflow_dispatch: # Allow manual trigger
+    - cron: "0 * * * *" # Run hourly to catch new builds quickly
+  workflow_dispatch:
 
 jobs:
   update-cask:
@@ -17,48 +17,89 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get Homebrew Info
-        id: brew-info
-        run: echo "path=$(brew --repo)/Library/Homebrew/vendor/bundle" >> $GITHUB_OUTPUT
-
-      - name: Cache Homebrew Gems
-        id: cache-gems
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.brew-info.outputs.path }}
-          key: ${{ runner.os }}-homebrew-gems-v1
-          restore-keys: |
-            ${{ runner.os }}-homebrew-gems-
-
       - name: Install Homebrew Gems
         run: brew install-bundler-gems --add-groups=style
 
-      - name: Bump Casks
-        id: bump-action
-        uses: macauley/action-homebrew-bump-cask@v1
-        continue-on-error: true
-        with:
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          livecheck: true
-
-      - name: Bump Casks (fallback)
-        if: steps.bump-action.outcome == 'failure'
+      - name: Check for updates and bump
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Configure Git user
+          set -e
+          
+          # Initialize git config
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Get list of outdated casks
-          OUTDATED=$(brew livecheck --cask --newer-only --full-name --json --tap=AppleBlox/homebrew-repo | jq -r '.[].cask' || echo "")
+          echo "Fetching latest successful run for 'dev' branch..."
           
-          if [ -z "$OUTDATED" ]; then
-            echo "No outdated casks found."
+          # 1. Get the latest SUCCESSFUL run for the 'build' workflow on 'dev' branch
+          # We filter by status=success to avoid partial/failed builds
+          LATEST_RUN_JSON=$(gh run list --repo AppleBlox/appleblox --branch dev --workflow "build" --status success --limit 1 --json databaseId,headSha)
+          
+          if [ -z "$LATEST_RUN_JSON" ] || [ "$LATEST_RUN_JSON" == "[]" ]; then
+             echo "No successful runs found. Exiting."
+             exit 0
+          fi
+          
+          RUN_ID=$(echo "$LATEST_RUN_JSON" | jq -r '.[0].databaseId')
+          COMMIT_SHA=$(echo "$LATEST_RUN_JSON" | jq -r '.[0].headSha')
+          
+          echo "Found Run ID: $RUN_ID (SHA: $COMMIT_SHA)"
+          
+          # 2. Extract Version from package.json at that specific SHA
+          VERSION=$(curl -s "https://raw.githubusercontent.com/AppleBlox/appleblox/$COMMIT_SHA/package.json" | jq -r .version)
+          
+          if [ -z "$VERSION" ] || [ "$VERSION" == "null" ]; then
+             echo "Could not extract version. Exiting."
+             exit 1
+          fi
+          
+          echo "Detected Latest Version: $VERSION"
+          
+          # 3. Check if we already have this version
+          CURRENT_VERSION=$(grep 'version "' Casks/appleblox@dev.rb | head -n 1 | awk -F '"' '{print $2}')
+          
+          if [ "$VERSION" == "$CURRENT_VERSION" ]; then
+             echo "Cask is already at version $VERSION. Nothing to do."
+             exit 0
+          fi
+          
+          echo "Update needed: $CURRENT_VERSION -> $VERSION"
+          
+          # 4. Verify Artifact Availability (Foolproof Check)
+          # We verify that nightly.link actually has the files for this version.
+          # Note: nightly.link serves the *latest* artifact properly.
+          ARM_URL="https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-${VERSION}_arm64.dmg.zip"
+          INTEL_URL="https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-${VERSION}_x64.dmg.zip"
+          
+          echo "Verifying artifacts..."
+          
+          if curl --output /dev/null --silent --head --fail "$ARM_URL"; then
+            echo "✔ ARM Artifact exists"
+          else
+            echo "✘ ARM Artifact NOT found (404/Fail). Skipping bump."
             exit 0
           fi
+          
+          if curl --output /dev/null --silent --head --fail "$INTEL_URL"; then
+             echo "✔ Intel Artifact exists"
+          else
+             echo "✘ Intel Artifact NOT found (404/Fail). Skipping bump."
+             exit 0
+          fi
 
-          for cask in $OUTDATED; do
-            echo "Bumping $cask..."
-            brew bump-cask-pr --no-audit --no-browse --no-fork "$cask" || true
-          done
+          # 5. Bump the Cask
+          echo "Artifacts confirmed. Bumping cask..."
+          
+          # Using brew bump-cask-pr
+          # We use --version to forcing the bump to the version we found
+          # --no-audit because we might not pass all strict audits in dev
+          # --no-browse to avoid opening browser
+          
+          brew bump-cask-pr \
+            --version "$VERSION" \
+            --no-audit \
+            --no-browse \
+            --no-fork \
+            Casks/appleblox@dev.rb
