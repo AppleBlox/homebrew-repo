@@ -21,6 +21,7 @@ cask "appleblox@dev" do
   auto_updates true
   conflicts_with cask: "appleblox"
 
+  depends_on macos: ">= :mojave"
   depends_on cask: "roblox"
 
   app "AppleBlox.app"
