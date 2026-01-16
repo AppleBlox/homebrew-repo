@@ -13,8 +13,8 @@ cask "appleblox" do
   homepage "https://appleblox.com/"
 
   livecheck do
-    url :url
-    strategy :github_latest
+    url "https://github.com/AppleBlox/appleblox/releases"
+    strategy :github_releases
   end
 
   auto_updates true
