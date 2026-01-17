@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  bump-dev-cask:
-    name: Update appleblox@dev Cask
+  bump-casks:
+    name: Update AppleBlox Casks
     runs-on: ubuntu-latest
     permissions:
       contents: write
