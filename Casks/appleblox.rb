@@ -23,7 +23,6 @@ cask "appleblox" do
 
   conflicts_with cask: "appleblox@dev"
 
-  depends_on macos: ">= :mojave"
   depends_on cask: "roblox"
 
   app "AppleBlox.app"
