@@ -1,9 +1,13 @@
 cask "appleblox@dev" do
   arch arm: "arm64", intel: "x64"
 
-  version "0.9.0-dev.28"
-  sha256 arm:   "405072dd4a087dbdeaeb93dfc5d9210631b84e6379154de0dd7f88924dbb0920",
-         intel: "050fc0d8c38b29a941918d12ddea2f60d7182e268b43f8b51ef946643ce33e83"
+  version "0.9.0-dev.26"
+  on_arm do
+    sha256 ""
+  end
+  on_intel do
+    sha256 ""
+  end
          
   url "https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-#{version}_#{arch}.dmg.zip",
       verified: "nightly.link/AppleBlox/appleblox"
@@ -18,7 +22,6 @@ cask "appleblox@dev" do
     end
   end
 
-  auto_updates true
   conflicts_with cask: "appleblox"
 
   depends_on macos: ">= :mojave"

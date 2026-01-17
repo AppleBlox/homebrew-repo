@@ -1,105 +1,100 @@
-name: Update AppleBlox Cask
+name: Update AppleBlox Casks
 
 on:
   schedule:
-    - cron: "0 * * * *" # Run hourly to catch new builds quickly
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
-  update-cask:
-    runs-on: macos-26
+  bump-dev-cask:
+    name: Update appleblox@dev Cask
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Install Homebrew Gems
-        run: brew install-bundler-gems --add-groups=style
-
-      - name: Check for updates and bump
+      - name: Check and Bump Stable Cask
+        id: update-stable
         env:
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -e
+          REPO="Appleblox/Appleblox"
+          STABLE_CASK="Casks/appleblox.rb"
+          STABLE_VERSION=$(gh release list -R ${REPO} --limit 1 --json tagName -q '.[] | .tagName')
+          CURRENT_VERSION=$(grep -Eo 'version ".+"' ${STABLE_CASK} | cut -d '"' -f 2)
           
-          # Initialize git config
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          echo "Fetching latest successful run for 'dev' branch..."
+          echo "Stable Version: ${STABLE_VERSION}"
+          echo "Current Version: ${CURRENT_VERSION}"
           
-          # 1. Get the latest SUCCESSFUL run for the 'build' workflow on 'dev' branch
-          # We filter by status=success to avoid partial/failed builds
-          LATEST_RUN_JSON=$(gh run list --repo AppleBlox/appleblox --branch dev --workflow "build" --status success --limit 1 --json databaseId,headSha)
-          
-          if [ -z "$LATEST_RUN_JSON" ] || [ "$LATEST_RUN_JSON" == "[]" ]; then
-             echo "No successful runs found. Exiting."
-             exit 0
-          fi
-          
-          RUN_ID=$(echo "$LATEST_RUN_JSON" | jq -r '.[0].databaseId')
-          COMMIT_SHA=$(echo "$LATEST_RUN_JSON" | jq -r '.[0].headSha')
-          
-          echo "Found Run ID: $RUN_ID (SHA: $COMMIT_SHA)"
-          
-          # 2. Extract Version from package.json at that specific SHA
-          VERSION=$(curl -s "https://raw.githubusercontent.com/AppleBlox/appleblox/$COMMIT_SHA/package.json" | jq -r .version)
-          
-          if [ -z "$VERSION" ] || [ "$VERSION" == "null" ]; then
-             echo "Could not extract version. Exiting."
-             exit 1
-          fi
-          
-          echo "Detected Latest Version: $VERSION"
-          
-          # 3. Check if we already have this version
-          CURRENT_VERSION=$(grep 'version "' Casks/appleblox@dev.rb | head -n 1 | awk -F '"' '{print $2}')
-          
-          if [ "$VERSION" == "$CURRENT_VERSION" ]; then
-             echo "Cask is already at version $VERSION. Nothing to do."
-             exit 0
-          fi
-          
-          echo "Update needed: $CURRENT_VERSION -> $VERSION"
-          
-          # 4. Verify Artifact Availability (Foolproof Check)
-          # We verify that nightly.link actually has the files for this version.
-          # Note: nightly.link serves the *latest* artifact properly.
-          ARM_URL="https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-${VERSION}_arm64.dmg.zip"
-          INTEL_URL="https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-${VERSION}_x64.dmg.zip"
-          
-          echo "Verifying artifacts..."
-          
-          if curl --output /dev/null --silent --head --fail "$ARM_URL"; then
-            echo "✔ ARM Artifact exists"
+          if [ "$CURRENT_VERSION" != "$STABLE_VERSION"  ]; then
+            ASSETS=($(gh release view ${STABLE_VERSION} -R ${REPO} --json assets -q '.assets[] | .name + ":" + .digest'))
+            
+            for i in "${ASSETS[@]}"; do
+              case "$i" in
+                *arm64.dmg*)
+                  SHA256_ARM=$(echo "$i" | cut -d':' -f3)
+                  echo "$i"
+                  ;;
+                *x64.dmg*)
+                  SHA256_INTEL=$(echo "$i" | cut -d':' -f3)
+                  echo "$i"
+                  ;;
+              esac
+            done
+            
+            ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"$SHA256_ARM\\\"\") if /on_arm/ .. /end/" ${STABLE_CASK}
+            ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"$SHA256_INTEL\\\"\") if /on_intel/ .. /end/" ${STABLE_CASK}
+            sed -i "s/$CURRENT_VERSION/$STABLE_VERSION/g" ${STABLE_CASK}
+            
+            git add ${STABLE_CASK}
           else
-            echo "✘ ARM Artifact NOT found (404/Fail). Skipping bump."
-            exit 0
-          fi
-          
-          if curl --output /dev/null --silent --head --fail "$INTEL_URL"; then
-             echo "✔ Intel Artifact exists"
-          else
-             echo "✘ Intel Artifact NOT found (404/Fail). Skipping bump."
-             exit 0
+            echo "No new stable version found"
           fi
 
-          # 5. Bump the Cask
-          echo "Artifacts confirmed. Bumping cask..."
+      - name: Check and Bump Dev Cask
+        id: update-dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO="Appleblox/Appleblox"
+          DEV_CASK="Casks/appleblox@dev.rb"
+          DEV_VERSION=$(curl -s https://raw.githubusercontent.com/${REPO}/dev/package.json | jq -r .version)
+          CURRENT_VERSION=$(grep -Eo 'version ".+"' ${DEV_CASK} | cut -d '"' -f 2)
           
-          # Using brew bump-cask-pr
-          # We use --version to forcing the bump to the version we found
-          # --no-audit because we might not pass all strict audits in dev
-          # --no-browse to avoid opening browser
+          echo "Dev Version: ${DEV_VERSION}"
+          echo "Current Version: ${CURRENT_VERSION}"
           
-          brew bump-cask-pr \
-            --version "$VERSION" \
-            --no-audit \
-            --no-browse \
-            --no-fork \
-            Casks/appleblox@dev.rb
+          if [ "$CURRENT_VERSION" != "$DEV_VERSION"  ]; then
+            wget -O "AppleBlox_${DEV_VERSION}_arm64.dmg.zip" "https://nightly.link/${REPO}/workflows/build/dev/AppleBlox-${DEV_VERSION}_arm64.dmg.zip" -q
+            SHA256_ARM=$(sha256sum "AppleBlox_${DEV_VERSION}_arm64.dmg.zip" | awk '{ print $1 }')
+            echo "SHA256 for arm build is ${SHA256_ARM}"
+
+            wget -O "AppleBlox_${DEV_VERSION}_x64.dmg.zip" "https://nightly.link/${REPO}/workflows/build/dev/AppleBlox-${DEV_VERSION}_x64.dmg.zip" -q
+            SHA256_INTEL=$(sha256sum "AppleBlox_${DEV_VERSION}_x64.dmg.zip" | awk '{ print $1 }')
+            echo "SHA256 for x64 build is ${SHA256_INTEL}"
+            
+            rm AppleBlox_${DEV_VERSION}_*.dmg.zip
+          
+            ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"$SHA256_ARM\\\"\") if /on_arm/ .. /end/" ${DEV_CASK}
+            ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"$SHA256_INTEL\\\"\") if /on_intel/ .. /end/" ${DEV_CASK}
+            sed -i "s/$CURRENT_VERSION/$DEV_VERSION/g" ${DEV_CASK}
+          
+            git add ${DEV_CASK}
+          else
+            echo "No new dev version found"
+          fi
+          
+      - name: Commit and Push Changes
+        if: steps.update-stable.outcome == 'success' || steps.update-dev.outcome == 'success'
+        run: |
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git config --global user.name "github-actions"
+            git config --global user.email "actions@github.com"
+            git commit -m "Update AppleBlox Casks"
+            git push
+          fi
