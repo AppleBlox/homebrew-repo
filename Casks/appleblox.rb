@@ -2,8 +2,12 @@ cask "appleblox" do
   arch arm: "arm64", intel: "x64"
 
   version "0.8.6"
-  sha256 arm:   "2dec8668eb2478e13afaafea7773540cc138c2e5e54fe060a1d095747e5abaa9",
-         intel: "54cd2363713e1cd510ef891c8329de39a3ac5dd252239140dde3780b13e7453b"
+  on_arm do
+    sha256 "2dec8668eb2478e13afaafea7773540cc138c2e5e54fe060a1d095747e5abaa9"
+  end
+  on_intel do
+    sha256 "54cd2363713e1cd510ef891c8329de39a3ac5dd252239140dde3780b13e7453b"
+  end
 
   url "https://github.com/AppleBlox/appleblox/releases/download/#{version}/AppleBlox-#{version}_#{arch}.dmg",
       verified: "github.com/AppleBlox/appleblox/"
@@ -14,14 +18,11 @@ cask "appleblox" do
 
   livecheck do
     url "https://github.com/AppleBlox/appleblox/releases"
-    strategy :github_releases
+    strategy :git
   end
 
-  auto_updates true
   conflicts_with cask: "appleblox@dev"
 
-
-  depends_on macos: ">= :mojave"
   depends_on cask: "roblox"
 
   app "AppleBlox.app"
