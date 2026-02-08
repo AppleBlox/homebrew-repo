@@ -12,6 +12,13 @@ To add this tap to your Homebrew installation:
 brew tap AppleBlox/homebrew-repo
 ```
 
+### Notice 
+If you have Roblox installed, you may or may not need to manage the Roblox client with Homebrew by running this command.
+Use this command **only** if you run into issues installing AppleBlox via the provided Casks.
+```zsh
+brew reinstall --cask --force roblox
+```
+
 ## Available Casks
 
 ### Stable Build
