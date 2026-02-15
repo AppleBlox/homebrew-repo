@@ -24,8 +24,6 @@ cask "appleblox@dev" do
 
   conflicts_with cask: "appleblox"
 
-  depends_on cask: "roblox"
-
   app "AppleBlox.app"
 
   zap trash: [
