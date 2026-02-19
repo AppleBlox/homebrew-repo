@@ -8,7 +8,7 @@ on:
 jobs:
   bump-casks:
     name: Update AppleBlox Casks
-    runs-on: macos-latest
+    runs-on: macos-26
     permissions:
       contents: write
       pull-requests: write
@@ -16,11 +16,38 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Debug Environment
+        run: |
+          echo "::group::System Information"
+          echo "Time: $(date)"
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            echo "OS: macOS"
+            sw_vers
+          else
+            echo "OS: Linux"
+            cat /etc/os-release
+          fi
+          echo "Disk Usage:"
+          df -h
+          echo "::endgroup::"
+
+          echo "::group::Environment Variables"
+          env | sort
+          echo "::endgroup::"
+
       - name: Update Casks
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: "AppleBlox/appleblox"
         run: |
+          # Logging helper
+          log_cmd() {
+            local timestamp=$(date +'%Y-%m-%d %H:%M:%S')
+            echo "[$timestamp] [exec] $1"
+            echo "[$timestamp] [info] Command ran with $(($# - 1)) parameters"
+            "$@"
+          }
+
           # Define the update_cask function to dry up the logic
           update_cask() {
             local CASK_NAME=$1
@@ -31,6 +58,10 @@ jobs:
 
             echo "::group::Updating ${CASK_NAME} to ${NEW_VERSION}"
             
+            echo "[debug] --- File Content Before ---"
+            cat "${CASK_FILE}"
+            echo "[debug] -------------------------"
+
             CURRENT_VERSION=$(grep -Eo 'version ".+"' "${CASK_FILE}" | cut -d '"' -f 2)
             echo "[debug] Current version: ${CURRENT_VERSION}"
             echo "[debug] New version    : ${NEW_VERSION}"
@@ -39,14 +70,22 @@ jobs:
               echo "[debug] Version mismatch detected. Patching..."
               
               # Patch SHA256 values using ruby for multiline block matching
-              ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"${SHA256_ARM}\\\"\") if /on_arm/ .. /end/" "${CASK_FILE}"
-              ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"${SHA256_INTEL}\\\"\") if /on_intel/ .. /end/" "${CASK_FILE}"
+              log_cmd ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"${SHA256_ARM}\\\"\") if /on_arm/ .. /end/" "${CASK_FILE}"
+              log_cmd ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"${SHA256_INTEL}\\\"\") if /on_intel/ .. /end/" "${CASK_FILE}"
               
               # Patch version string
-              sed -i "" "s/${CURRENT_VERSION}/${NEW_VERSION}/g" "${CASK_FILE}"
+              if [[ "$OSTYPE" == "darwin"* ]]; then
+                log_cmd sed -i "" "s/${CURRENT_VERSION}/${NEW_VERSION}/g" "${CASK_FILE}"
+              else
+                log_cmd sed -i "s/${CURRENT_VERSION}/${NEW_VERSION}/g" "${CASK_FILE}"
+              fi
               
+              echo "[debug] --- File Content After ---"
+              cat "${CASK_FILE}"
+              echo "[debug] ------------------------"
+
               echo "[debug] Staging changes for ${CASK_FILE}"
-              git add "${CASK_FILE}"
+              log_cmd git add "${CASK_FILE}"
             else
               echo "[debug] ${CASK_NAME} is already at the latest version."
             fi
@@ -55,20 +94,22 @@ jobs:
           }
 
           echo "--- STABLE BUILD ---"
-          STABLE_VERSION=$(gh release list -R "${REPO}" --limit 1 --json tagName -q '.[] | .tagName')
+          STABLE_VERSION=$(log_cmd gh release list -R "${REPO}" --limit 1 --json tagName -q '.[] | .tagName')
           echo "[debug] Latest Stable: ${STABLE_VERSION}"
 
           # Fetch stable assets
-          # Note: handling both AppleBlox-VERSION_ARCH.dmg and AppleBlox_VERSION_ARCH.dmg
-          STABLE_ASSETS=($(gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets -q '.assets[] | .name + ":" + .digest'))
+          echo "[debug] Fetching assets for version ${STABLE_VERSION}"
+          STABLE_ASSETS=($(log_cmd gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets -q '.assets[] | .name + ":" + .digest'))
 
           for asset in "${STABLE_ASSETS[@]}"; do
             case "${asset}" in
               *arm64.dmg*)
                 STABLE_SHA_ARM=$(echo "${asset}" | cut -d':' -f3)
+                echo "[debug] Found ARM asset: ${asset%%:*} (SHA: $STABLE_SHA_ARM)"
                 ;;
               *x64.dmg*)
                 STABLE_SHA_INTEL=$(echo "${asset}" | cut -d':' -f3)
+                echo "[debug] Found Intel asset: ${asset%%:*} (SHA: $STABLE_SHA_INTEL)"
                 ;;
             esac
           done
@@ -77,18 +118,16 @@ jobs:
 
           echo ""
           echo "--- DEV BUILD ---"
-          DEV_VERSION=$(curl -s "https://raw.githubusercontent.com/${REPO}/dev/package.json" | jq -r .version)
+          DEV_VERSION=$(log_cmd curl -s "https://raw.githubusercontent.com/${REPO}/dev/package.json" | jq -r .version)
           echo "[debug] Latest Dev: ${DEV_VERSION}"
 
           # Download and compute hashes for dev builds (nightly.link)
-          # nighty.link uses AppleBlox-VERSION_ARCH.dmg.zip
-
           fetch_dev_sha() {
             local arch=$1
             local url="https://nightly.link/${REPO}/workflows/build/dev/AppleBlox-${DEV_VERSION}_${arch}.dmg.zip"
             echo "[debug] Downloading ${arch} from ${url}"
-            curl -sL "${url}" -o "dev_${arch}.zip"
-            shasum -a 256 "dev_${arch}.zip" | awk '{print $1}'
+            log_cmd curl -sL "${url}" -o "dev_${arch}.zip"
+            log_cmd shasum -a 256 "dev_${arch}.zip" | awk '{print $1}'
           }
 
           DEV_SHA_ARM=$(fetch_dev_sha "arm64")
@@ -97,15 +136,29 @@ jobs:
           update_cask "appleblox@dev" "${DEV_VERSION}" "${DEV_SHA_ARM}" "${DEV_SHA_INTEL}"
 
           # Cleanup
-          rm -f dev_*.zip
+          log_cmd rm -f dev_*.zip
 
       - name: Commit and Push Changes
         run: |
+          # Logging helper
+          log_cmd() {
+            local timestamp=$(date +'%Y-%m-%d %H:%M:%S')
+            echo "[$timestamp] [exec] $1"
+            echo "[$timestamp] [info] Command ran with $(($# - 1)) parameters"
+            "$@"
+          }
+
+          echo "[debug] Checking for changes..."
+          log_cmd git status
+
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git config --global user.name "github-actions"
-            git config --global user.email "actions@github.com"
-            git commit -m "chore: update appleblox casks"
-            git push
+            echo "[debug] Diff of changes to be committed:"
+            git diff --cached
+            
+            log_cmd git config --global user.name "github-actions"
+            log_cmd git config --global user.email "actions@github.com"
+            log_cmd git commit -m "chore: update appleblox casks"
+            log_cmd git push
           fi
