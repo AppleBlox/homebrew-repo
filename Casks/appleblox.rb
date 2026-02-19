@@ -3,10 +3,10 @@ cask "appleblox" do
 
   version "0.8.6"
   on_arm do
-    sha256 "2dec8668eb2478e13afaafea7773540cc138c2e5e54fe060a1d095747e5abaa9"
+    sha256 "37f51fd6ebf5e15367816b807797cde69fb96eb6e44f9a726a19ea482e19d07c"
   end
   on_intel do
-    sha256 "54cd2363713e1cd510ef891c8329de39a3ac5dd252239140dde3780b13e7453b"
+    sha256 "70104710d2977875356a6384e291d08a1883208faae89550e2ceb14e1dd74837"
   end
 
   url "https://github.com/AppleBlox/appleblox/releases/download/#{version}/AppleBlox-#{version}_#{arch}.dmg",

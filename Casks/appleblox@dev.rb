@@ -1,12 +1,12 @@
 cask "appleblox@dev" do
   arch arm: "arm64", intel: "x64"
 
-  version "0.9.0-dev.37"
+  version "0.9.0-dev.38"
   on_arm do
-    sha256 "c588ac3b837fda51e7569e63571e380f49c0987a57fe44906396e637e96f4fee"
+    sha256 "991c242d2521ae0628f2346d7f7544bb917e5f918f91edb94a2035de8293d06f"
   end
   on_intel do
-    sha256 "030d8f5259b82808f1a114442678f24a94db8b958b90638bc9347da8d063f3d3"
+    sha256 "9a9adaad68e5fc90763ed79a8dcfcbc517d994faee502d776e375b5bb049e797"
   end
          
   url "https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-#{version}_#{arch}.dmg.zip",
