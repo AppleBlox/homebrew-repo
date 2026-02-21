@@ -100,29 +100,34 @@ jobs:
           fi
           echo "[debug] Latest Stable: ${STABLE_VERSION}"
 
-          # Fetch stable assets
-          echo "[debug] Fetching assets for version ${STABLE_VERSION}"
-          STABLE_ASSETS=($(log_cmd gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets -q '.assets[] | .name + ":" + .digest'))
+          CURRENT_STABLE_VERSION=$(grep -Eo 'version ".+"' "Casks/appleblox.rb" | cut -d '"' -f 2)
+          if [ "${CURRENT_STABLE_VERSION}" == "${STABLE_VERSION}" ]; then
+            echo "[debug] appleblox is already at the latest version (${STABLE_VERSION}). Skipping update."
+          else
+            # Fetch stable assets
+            echo "[debug] Fetching assets for version ${STABLE_VERSION}"
+            STABLE_ASSETS=($(log_cmd gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets -q '.assets[] | .name + ":" + .digest'))
 
-          for asset in "${STABLE_ASSETS[@]}"; do
-            case "${asset}" in
-              *arm64.dmg*)
-                STABLE_SHA_ARM=$(echo "${asset}" | cut -d':' -f3)
-                echo "[debug] Found ARM asset: ${asset%%:*} (SHA: $STABLE_SHA_ARM)"
-                ;;
-              *x64.dmg*)
-                STABLE_SHA_INTEL=$(echo "${asset}" | cut -d':' -f3)
-                echo "[debug] Found Intel asset: ${asset%%:*} (SHA: $STABLE_SHA_INTEL)"
-                ;;
-            esac
-          done
+            for asset in "${STABLE_ASSETS[@]}"; do
+              case "${asset}" in
+                *arm64.dmg*)
+                  STABLE_SHA_ARM=$(echo "${asset}" | cut -d':' -f3)
+                  echo "[debug] Found ARM asset: ${asset%%:*} (SHA: $STABLE_SHA_ARM)"
+                  ;;
+                *x64.dmg*)
+                  STABLE_SHA_INTEL=$(echo "${asset}" | cut -d':' -f3)
+                  echo "[debug] Found Intel asset: ${asset%%:*} (SHA: $STABLE_SHA_INTEL)"
+                  ;;
+              esac
+            done
 
-          if [ -z "${STABLE_SHA_ARM}" ] || [ -z "${STABLE_SHA_INTEL}" ]; then
-            echo "[error] Missing stable assets for ${STABLE_VERSION}" >&2
-            exit 1
+            if [ -z "${STABLE_SHA_ARM}" ] || [ -z "${STABLE_SHA_INTEL}" ]; then
+              echo "[error] Missing stable assets for ${STABLE_VERSION}" >&2
+              exit 1
+            fi
+
+            update_cask "appleblox" "${STABLE_VERSION}" "${STABLE_SHA_ARM}" "${STABLE_SHA_INTEL}"
           fi
-
-          update_cask "appleblox" "${STABLE_VERSION}" "${STABLE_SHA_ARM}" "${STABLE_SHA_INTEL}"
 
           echo ""
           echo "--- DEV BUILD ---"
@@ -133,27 +138,36 @@ jobs:
           fi
           echo "[debug] Latest Dev: ${DEV_VERSION}"
 
-          # Download and compute hashes for dev builds (nightly.link)
-          fetch_dev_sha() {
-            local arch=$1
-            local url="https://nightly.link/${REPO}/workflows/build/dev/AppleBlox-${DEV_VERSION}_${arch}.dmg.zip"
-            echo "[debug] Downloading ${arch} from ${url}" >&2
-            log_cmd curl -sL "${url}" -o "dev_${arch}.zip"
-            log_cmd shasum -a 256 "dev_${arch}.zip" | awk '{print $1}'
-          }
+          CURRENT_DEV_VERSION=$(grep -Eo 'version ".+"' "Casks/appleblox@dev.rb" | cut -d '"' -f 2)
+          if [ "${CURRENT_DEV_VERSION}" == "${DEV_VERSION}" ]; then
+            echo "[debug] appleblox@dev is already at the latest version (${DEV_VERSION}). Skipping update."
+          else
+            # Download dev builds in parallel to save time using nightly.link
+            fetch_dev_download() {
+              local arch=$1
+              local url="https://nightly.link/${REPO}/workflows/build/dev/AppleBlox-${DEV_VERSION}_${arch}.dmg.zip"
+              echo "[debug] Downloading ${arch} from ${url}" >&2
+              log_cmd curl -sL "${url}" -o "dev_${arch}.zip"
+            }
 
-          DEV_SHA_ARM=$(fetch_dev_sha "arm64")
-          DEV_SHA_INTEL=$(fetch_dev_sha "x64")
+            fetch_dev_download "arm64" &
+            fetch_dev_download "x64" &
+            wait
 
-          if [ -z "${DEV_SHA_ARM}" ] || [ -z "${DEV_SHA_INTEL}" ]; then
-            echo "[error] Missing dev assets for ${DEV_VERSION}" >&2
-            exit 1
+            DEV_SHA_ARM=$(log_cmd shasum -a 256 "dev_arm64.zip" | awk '{print $1}')
+            DEV_SHA_INTEL=$(log_cmd shasum -a 256 "dev_x64.zip" | awk '{print $1}')
+
+
+            if [ -z "${DEV_SHA_ARM}" ] || [ -z "${DEV_SHA_INTEL}" ]; then
+              echo "[error] Missing dev assets for ${DEV_VERSION}" >&2
+              exit 1
+            fi
+
+            update_cask "appleblox@dev" "${DEV_VERSION}" "${DEV_SHA_ARM}" "${DEV_SHA_INTEL}"
+
+            # Cleanup
+            log_cmd rm -f dev_*.zip
           fi
-
-          update_cask "appleblox@dev" "${DEV_VERSION}" "${DEV_SHA_ARM}" "${DEV_SHA_INTEL}"
-
-          # Cleanup
-          log_cmd rm -f dev_*.zip
 
       - name: Commit and Push Changes
         run: |
@@ -173,8 +187,8 @@ jobs:
             echo "[debug] Diff of changes to be committed:"
             git diff --cached
             
-            log_cmd git config --global user.name "github-actions"
-            log_cmd git config --global user.email "actions@github.com"
+            log_cmd git config --global user.name "github-actions[bot]"
+            log_cmd git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
             log_cmd git commit -m "chore: update appleblox casks"
             log_cmd git push
           fi
