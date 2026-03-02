@@ -110,11 +110,11 @@ jobs:
 
             for asset in "${STABLE_ASSETS[@]}"; do
               case "${asset}" in
-                *arm64.dmg*)
+                *arm64.pkg*)
                   STABLE_SHA_ARM=$(echo "${asset}" | cut -d':' -f3)
                   echo "[debug] Found ARM asset: ${asset%%:*} (SHA: $STABLE_SHA_ARM)"
                   ;;
-                *x64.dmg*)
+                *x64.pkg*)
                   STABLE_SHA_INTEL=$(echo "${asset}" | cut -d':' -f3)
                   echo "[debug] Found Intel asset: ${asset%%:*} (SHA: $STABLE_SHA_INTEL)"
                   ;;
@@ -145,7 +145,7 @@ jobs:
             # Download dev builds in parallel to save time using nightly.link
             fetch_dev_download() {
               local arch=$1
-              local url="https://nightly.link/${REPO}/workflows/build/dev/AppleBlox-${DEV_VERSION}_${arch}.dmg.zip"
+              local url="https://nightly.link/${REPO}/workflows/build/dev/AppleBlox-${arch}-${DEV_VERSION}.pkg.zip"
               echo "[debug] Downloading ${arch} from ${url}" >&2
               log_cmd curl -sL "${url}" -o "dev_${arch}.zip"
             }

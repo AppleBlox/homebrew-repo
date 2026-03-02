@@ -1,18 +1,14 @@
 cask "appleblox@dev" do
   arch arm: "arm64", intel: "x64"
 
-  version "0.9.0-dev.38"
-  on_arm do
-    sha256 "991c242d2521ae0628f2346d7f7544bb917e5f918f91edb94a2035de8293d06f"
-  end
-  on_intel do
-    sha256 "9a9adaad68e5fc90763ed79a8dcfcbc517d994faee502d776e375b5bb049e797"
-  end
-         
-  url "https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-#{version}_#{arch}.dmg.zip",
-      verified: "nightly.link/AppleBlox/appleblox"
+  version "0.9.0-dev.40"
+  sha256 arm:   "33e6d00cebddbb8f778649182f1543eea0d7bc474db762799c188a01eb59ed8b",
+         intel: "e2ed93d4145bc3da773fb23e9d4ce8257f08d716b3034cb689788ac7abe6299b"
+
+  url "https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-#{arch}-#{version}.pkg.zip",
+      verified: "nightly.link/AppleBlox/appleblox/"
   name "AppleBlox (Dev)"
-  desc "⚠️ Nightly development build of AppleBlox. Not recommended for daily use. Things could break at any time."
+  desc "Nightly development build of AppleBlox (unstable)"
   homepage "https://appleblox.com/"
 
   livecheck do
@@ -24,7 +20,7 @@ cask "appleblox@dev" do
 
   conflicts_with cask: "appleblox"
 
-  app "AppleBlox.app"
+  pkg "AppleBlox-#{arch}-#{version}.pkg"
 
   zap trash: [
     "~/Library/Caches/ch.origaming.appleblox",
