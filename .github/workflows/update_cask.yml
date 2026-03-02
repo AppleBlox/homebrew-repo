@@ -68,9 +68,9 @@ jobs:
             if [ "${CURRENT_VERSION}" != "${NEW_VERSION}" ]; then
               echo "[debug] Version mismatch detected. Patching..."
               
-              # Patch SHA256 values using ruby for multiline block matching
-              log_cmd ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"${SHA256_ARM}\\\"\") if /on_arm/ .. /end/" "${CASK_FILE}"
-              log_cmd ruby -i -pe "gsub(/sha256 \".*\"/, \"sha256 \\\"${SHA256_INTEL}\\\"\") if /on_intel/ .. /end/" "${CASK_FILE}"
+              # Patch SHA256 values using ruby
+              log_cmd ruby -i -pe "gsub(/sha256 arm:\s+\\\".*\\\"/, \\\"sha256 arm:   \\\\\\\"${SHA256_ARM}\\\\\\\"\\\")" "${CASK_FILE}"
+              log_cmd ruby -i -pe "gsub(/intel:\s+\\\".*\\\"/, \\\"intel: \\\\\\\"${SHA256_INTEL}\\\\\\\"\\\")" "${CASK_FILE}"
               
               # Patch version string
               if [[ "$OSTYPE" == "darwin"* ]]; then

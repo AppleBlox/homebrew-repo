@@ -20,7 +20,14 @@ cask "appleblox@dev" do
 
   conflicts_with cask: "appleblox"
 
-  pkg "AppleBlox-#{arch}-#{version}.pkg"
+  preflight do
+    # Expand the PKG manually to bypass the relocatable behavior of the macOS 'installer'
+    system_command "pkgutil", args: ["--expand-full", "#{staged_path}/AppleBlox-#{arch}-#{version}.pkg", "#{staged_path}/expanded"]
+  end
+
+  app "expanded/AppleBlox.pkg/Payload/AppleBlox.app"
+
+  uninstall delete: "/Applications/AppleBlox.app"
 
   zap trash: [
     "~/Library/Caches/ch.origaming.appleblox",
