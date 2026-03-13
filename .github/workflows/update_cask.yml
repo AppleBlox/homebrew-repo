@@ -9,6 +9,8 @@ jobs:
   bump-casks:
     name: Update AppleBlox Casks
     runs-on: macos-26
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
       contents: write
       pull-requests: write
