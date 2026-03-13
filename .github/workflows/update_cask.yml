@@ -27,12 +27,6 @@ jobs:
             echo "OS: Linux"
             cat /etc/os-release
           fi
-          echo "Disk Usage:"
-          df -h
-          echo "::endgroup::"
-
-          echo "::group::Environment Variables"
-          env | sort
           echo "::endgroup::"
 
       - name: Update Casks
@@ -68,14 +62,14 @@ jobs:
             if [ "${CURRENT_VERSION}" != "${NEW_VERSION}" ]; then
               echo "[debug] Version mismatch detected. Patching..."
               
-              # Patch SHA256 values using ruby
-              log_cmd ruby -i -pe "gsub(/sha256 arm:\s+\\\".*\\\"/, \\\"sha256 arm:   \\\\\\\"${SHA256_ARM}\\\\\\\"\\\")" "${CASK_FILE}"
-              log_cmd ruby -i -pe "gsub(/intel:\s+\\\".*\\\"/, \\\"intel: \\\\\\\"${SHA256_INTEL}\\\\\\\"\\\")" "${CASK_FILE}"
-              
-              # Patch version string
+              # Patch SHA256 values and version string using sed
               if [[ "$OSTYPE" == "darwin"* ]]; then
+                log_cmd sed -i "" "s/sha256 arm:   \"[^\"]*\"/sha256 arm:   \"${SHA256_ARM}\"/" "${CASK_FILE}"
+                log_cmd sed -i "" "s/intel: \"[^\"]*\"/intel: \"${SHA256_INTEL}\"/" "${CASK_FILE}"
                 log_cmd sed -i "" "s|${CURRENT_VERSION}|${NEW_VERSION}|g" "${CASK_FILE}"
               else
+                log_cmd sed -i "s/sha256 arm:   \"[^\"]*\"/sha256 arm:   \"${SHA256_ARM}\"/" "${CASK_FILE}"
+                log_cmd sed -i "s/intel: \"[^\"]*\"/intel: \"${SHA256_INTEL}\"/" "${CASK_FILE}"
                 log_cmd sed -i "s|${CURRENT_VERSION}|${NEW_VERSION}|g" "${CASK_FILE}"
               fi
               
@@ -109,14 +103,16 @@ jobs:
             STABLE_ASSETS=($(log_cmd gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets -q '.assets[] | .name + ":" + .digest'))
 
             for asset in "${STABLE_ASSETS[@]}"; do
-              case "${asset}" in
+              ASSET_NAME=$(echo "${asset}" | cut -d':' -f1)
+              ASSET_DIGEST=$(echo "${asset}" | cut -d':' -f2)
+              case "${ASSET_NAME}" in
                 *arm64.pkg*)
-                  STABLE_SHA_ARM=$(echo "${asset}" | cut -d':' -f3)
-                  echo "[debug] Found ARM asset: ${asset%%:*} (SHA: $STABLE_SHA_ARM)"
+                  STABLE_SHA_ARM="${ASSET_DIGEST}"
+                  echo "[debug] Found ARM asset: ${ASSET_NAME} (SHA: $STABLE_SHA_ARM)"
                   ;;
                 *x64.pkg*)
-                  STABLE_SHA_INTEL=$(echo "${asset}" | cut -d':' -f3)
-                  echo "[debug] Found Intel asset: ${asset%%:*} (SHA: $STABLE_SHA_INTEL)"
+                  STABLE_SHA_INTEL="${ASSET_DIGEST}"
+                  echo "[debug] Found Intel asset: ${ASSET_NAME} (SHA: $STABLE_SHA_INTEL)"
                   ;;
               esac
             done
@@ -156,7 +152,6 @@ jobs:
 
             DEV_SHA_ARM=$(log_cmd shasum -a 256 "dev_arm64.zip" | awk '{print $1}')
             DEV_SHA_INTEL=$(log_cmd shasum -a 256 "dev_x64.zip" | awk '{print $1}')
-
 
             if [ -z "${DEV_SHA_ARM}" ] || [ -z "${DEV_SHA_INTEL}" ]; then
               echo "[error] Missing dev assets for ${DEV_VERSION}" >&2
