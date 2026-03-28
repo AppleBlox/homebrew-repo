@@ -1,5 +1,5 @@
 cask "appleblox@dev" do
-  arch arm: "arm64", intel: "1d4f644bee698661ba949a9cab4097bd54a49d4a6a071eac52a510f036c7b9af"
+  arch arm: "arm64", intel: "x64"
 
   version "0.9.0-dev.41"
   sha256 arm:   "528c21cb768afa3f94f708bb9cc1bbc37a29e2b0ca366ac192f520cd38db6145",
@@ -19,6 +19,7 @@ cask "appleblox@dev" do
   end
 
   conflicts_with cask: "appleblox"
+  depends_on cask: "roblox"
 
   preflight do
     # Expand the PKG manually to bypass the relocatable behavior of the macOS 'installer'
@@ -27,9 +28,9 @@ cask "appleblox@dev" do
 
   app "expanded/AppleBlox.pkg/Payload/AppleBlox.app"
 
-  uninstall delete: "/Applications/AppleBlox.app"
 
   zap trash: [
+    "~/Library/Application Support/appleblox",
     "~/Library/Caches/ch.origaming.appleblox",
     "~/Library/HTTPStorages/ch.origaming.appleblox",
     "~/Library/Preferences/ch.origaming.appleblox.plist",

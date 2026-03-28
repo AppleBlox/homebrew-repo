@@ -4,6 +4,7 @@ on:
   schedule:
     - cron: "0 0 * * *" # Run daily
   workflow_dispatch: # Allow manual trigger
+  workflow_call: # Allow triggering from other workflows
 
 jobs:
   bump-casks:
@@ -64,16 +65,13 @@ jobs:
             if [ "${CURRENT_VERSION}" != "${NEW_VERSION}" ]; then
               echo "[debug] Version mismatch detected. Patching..."
               
-              # Patch SHA256 values and version string using sed
-              if [[ "$OSTYPE" == "darwin"* ]]; then
-                log_cmd sed -i "" "s/sha256 arm:   \"[^\"]*\"/sha256 arm:   \"${SHA256_ARM}\"/" "${CASK_FILE}"
-                log_cmd sed -i "" "s/intel: \"[^\"]*\"/intel: \"${SHA256_INTEL}\"/" "${CASK_FILE}"
-                log_cmd sed -i "" "s|${CURRENT_VERSION}|${NEW_VERSION}|g" "${CASK_FILE}"
-              else
-                log_cmd sed -i "s/sha256 arm:   \"[^\"]*\"/sha256 arm:   \"${SHA256_ARM}\"/" "${CASK_FILE}"
-                log_cmd sed -i "s/intel: \"[^\"]*\"/intel: \"${SHA256_INTEL}\"/" "${CASK_FILE}"
-                log_cmd sed -i "s|${CURRENT_VERSION}|${NEW_VERSION}|g" "${CASK_FILE}"
-              fi
+              # Update version and sha256 robustly using inline Ruby and regex captures
+              log_cmd env NEW_VERSION="${NEW_VERSION}" SHA256_ARM="${SHA256_ARM}" SHA256_INTEL="${SHA256_INTEL}" ruby -i -e '
+                content = File.read(ARGV[0])
+                content.sub!(/(version\s+)"[^"]+"/, "\\1\"#{ENV["NEW_VERSION"]}\"")
+                content.sub!(/(sha256\s+arm:\s+)"[^"]+"(,\s+intel:\s+)"[^"]+"/, "\\1\"#{ENV["SHA256_ARM"]}\"\\2\"#{ENV["SHA256_INTEL"]}\"")
+                File.write(ARGV[0], content)
+              ' "${CASK_FILE}"
               
               echo "[debug] --- File Content After ---"
               cat "${CASK_FILE}"

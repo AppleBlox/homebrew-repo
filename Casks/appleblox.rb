@@ -12,8 +12,8 @@ cask "appleblox" do
   homepage "https://appleblox.com/"
 
   livecheck do
-    url "https://github.com/AppleBlox/appleblox/releases"
-    strategy :git
+    url :url
+    strategy :github_latest
   end
 
   conflicts_with cask: "appleblox@dev"
@@ -22,6 +22,7 @@ cask "appleblox" do
   app "AppleBlox.app"
 
   zap trash: [
+    "~/Library/Application Support/appleblox",
     "~/Library/Caches/ch.origaming.appleblox",
     "~/Library/HTTPStorages/ch.origaming.appleblox",
     "~/Library/Preferences/ch.origaming.appleblox.plist",
