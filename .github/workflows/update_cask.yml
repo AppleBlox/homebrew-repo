@@ -37,11 +37,45 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: "AppleBlox/appleblox"
         run: |
+          set -euo pipefail
+
           log_cmd() {
             local timestamp=$(date +'%Y-%m-%d %H:%M:%S')
             echo "[$timestamp] [exec] $*" >&2
-            echo "[$timestamp] [info] Command ran with $(($# - 1)) parameters" >&2
             "$@"
+          }
+
+          # Validate that a string is a valid sha256 hex digest (64 lowercase hex chars)
+          validate_sha256() {
+            local hash=$1
+            local label=$2
+            if [[ ! "${hash}" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "[error] Invalid SHA256 for ${label}: '${hash}'" >&2
+              return 1
+            fi
+          }
+
+          # Extract a SHA256 digest from release JSON for a given asset name pattern.
+          # Usage: extract_digest "$JSON" "REGEX" "label"
+          extract_digest() {
+            local json=$1
+            local pattern=$2
+            local label=$3
+            local digest
+            digest=$(echo "${json}" | jq -r --arg pat "${pattern}" \
+              '[.assets[] | select(.name | test($pat))] | first | .digest // empty')
+
+            if [ -z "${digest}" ]; then
+              echo "[error] No asset matching '${pattern}' found for ${label}" >&2
+              echo "[debug] Available assets:" >&2
+              echo "${json}" | jq -r '.assets[].name' >&2
+              return 1
+            fi
+
+            # Strip the "sha256:" prefix
+            digest="${digest#sha256:}"
+            validate_sha256 "${digest}" "${label}" || return 1
+            echo "${digest}"
           }
 
           # Define the update_cask function to dry up the logic
@@ -53,26 +87,47 @@ jobs:
             local SHA256_INTEL=$4
 
             echo "::group::Updating ${CASK_NAME} to ${NEW_VERSION}"
-            
+
+            if [ ! -f "${CASK_FILE}" ]; then
+              echo "[error] Cask file not found: ${CASK_FILE}" >&2
+              return 1
+            fi
+
             echo "[debug] --- File Content Before ---"
             cat "${CASK_FILE}"
             echo "[debug] -------------------------"
 
-            CURRENT_VERSION=$(grep -Eo 'version ".+"' "${CASK_FILE}" | cut -d '"' -f 2)
+            CURRENT_VERSION=$(grep -Eo 'version ".+"' "${CASK_FILE}" | head -1 | cut -d '"' -f 2)
             echo "[debug] Current version: ${CURRENT_VERSION}"
             echo "[debug] New version    : ${NEW_VERSION}"
 
             if [ "${CURRENT_VERSION}" != "${NEW_VERSION}" ]; then
               echo "[debug] Version mismatch detected. Patching..."
-              
+
+              # Validate hashes before patching
+              validate_sha256 "${SHA256_ARM}" "${CASK_NAME} ARM" || return 1
+              validate_sha256 "${SHA256_INTEL}" "${CASK_NAME} Intel" || return 1
+
               # Update version and sha256 robustly using inline Ruby and regex captures
-              log_cmd env NEW_VERSION="${NEW_VERSION}" SHA256_ARM="${SHA256_ARM}" SHA256_INTEL="${SHA256_INTEL}" ruby -i -e '
+              log_cmd env NEW_VERSION="${NEW_VERSION}" SHA256_ARM="${SHA256_ARM}" SHA256_INTEL="${SHA256_INTEL}" ruby -e '
                 content = File.read(ARGV[0])
+                original = content.dup
                 content.sub!(/(version\s+)"[^"]+"/, "\\1\"#{ENV["NEW_VERSION"]}\"")
                 content.sub!(/(sha256\s+arm:\s+)"[^"]+"(,\s+intel:\s+)"[^"]+"/, "\\1\"#{ENV["SHA256_ARM"]}\"\\2\"#{ENV["SHA256_INTEL"]}\"")
+                if content == original
+                  STDERR.puts "[error] Ruby patching made no changes to #{ARGV[0]}"
+                  exit 1
+                end
                 File.write(ARGV[0], content)
               ' "${CASK_FILE}"
-              
+
+              # Verify the version was actually updated
+              PATCHED_VERSION=$(grep -Eo 'version ".+"' "${CASK_FILE}" | head -1 | cut -d '"' -f 2)
+              if [ "${PATCHED_VERSION}" != "${NEW_VERSION}" ]; then
+                echo "[error] Post-patch verification failed: version is '${PATCHED_VERSION}', expected '${NEW_VERSION}'" >&2
+                return 1
+              fi
+
               echo "[debug] --- File Content After ---"
               cat "${CASK_FILE}"
               echo "[debug] ------------------------"
@@ -82,59 +137,53 @@ jobs:
             else
               echo "[debug] ${CASK_NAME} is already at the latest version."
             fi
-            
+
             echo "::endgroup::"
           }
 
+          # ========================
+          # STABLE BUILD
+          # ========================
           echo "--- STABLE BUILD ---"
-          STABLE_VERSION=$(log_cmd gh release list -R "${REPO}" --limit 1 --json tagName -q '.[] | .tagName')
+          STABLE_VERSION=$(log_cmd gh release list -R "${REPO}" --limit 1 \
+            --exclude-drafts --exclude-pre-releases --json tagName -q '.[0].tagName')
           if [ -z "${STABLE_VERSION}" ]; then
             echo "[error] Could not determine latest stable version" >&2
             exit 1
           fi
           echo "[debug] Latest Stable: ${STABLE_VERSION}"
 
-          CURRENT_STABLE_VERSION=$(grep -Eo 'version ".+"' "Casks/appleblox.rb" | cut -d '"' -f 2)
+          CURRENT_STABLE_VERSION=$(grep -Eo 'version ".+"' "Casks/appleblox.rb" | head -1 | cut -d '"' -f 2)
           if [ "${CURRENT_STABLE_VERSION}" == "${STABLE_VERSION}" ]; then
             echo "[debug] appleblox is already at the latest version (${STABLE_VERSION}). Skipping update."
           else
-            # Fetch stable assets
+            # Fetch the full release JSON once, then extract what we need with jq
             echo "[debug] Fetching assets for version ${STABLE_VERSION}"
-            STABLE_ASSETS=($(log_cmd gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets -q '.assets[] | .name + ":" + .digest'))
+            RELEASE_JSON=$(log_cmd gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets)
 
-            for asset in "${STABLE_ASSETS[@]}"; do
-              ASSET_NAME=$(echo "${asset}" | cut -d':' -f1)
-              ASSET_DIGEST=$(echo "${asset}" | cut -d':' -f2)
-              case "${ASSET_NAME}" in
-                *arm64.pkg*)
-                  STABLE_SHA_ARM="${ASSET_DIGEST}"
-                  echo "[debug] Found ARM asset: ${ASSET_NAME} (SHA: $STABLE_SHA_ARM)"
-                  ;;
-                *x64.pkg*)
-                  STABLE_SHA_INTEL="${ASSET_DIGEST}"
-                  echo "[debug] Found Intel asset: ${ASSET_NAME} (SHA: $STABLE_SHA_INTEL)"
-                  ;;
-              esac
-            done
+            STABLE_SHA_ARM=$(extract_digest "${RELEASE_JSON}" "_arm64\\.dmg$" "stable ARM")
+            STABLE_SHA_INTEL=$(extract_digest "${RELEASE_JSON}" "_x64\\.dmg$" "stable Intel")
 
-            if [ -z "${STABLE_SHA_ARM}" ] || [ -z "${STABLE_SHA_INTEL}" ]; then
-              echo "[error] Missing stable assets for ${STABLE_VERSION}" >&2
-              exit 1
-            fi
+            echo "[debug] ARM SHA  : ${STABLE_SHA_ARM}"
+            echo "[debug] Intel SHA: ${STABLE_SHA_INTEL}"
 
             update_cask "appleblox" "${STABLE_VERSION}" "${STABLE_SHA_ARM}" "${STABLE_SHA_INTEL}"
           fi
 
+          # ========================
+          # DEV BUILD
+          # ========================
           echo ""
           echo "--- DEV BUILD ---"
-          DEV_VERSION=$(log_cmd curl -s "https://raw.githubusercontent.com/${REPO}/dev/package.json" | jq -r .version)
+          DEV_VERSION=$(log_cmd curl -sfL --retry 3 --retry-delay 5 \
+            "https://raw.githubusercontent.com/${REPO}/dev/package.json" | jq -r .version)
           if [ -z "${DEV_VERSION}" ] || [ "${DEV_VERSION}" == "null" ]; then
             echo "[error] Could not determine latest dev version" >&2
             exit 1
           fi
           echo "[debug] Latest Dev: ${DEV_VERSION}"
 
-          CURRENT_DEV_VERSION=$(grep -Eo 'version ".+"' "Casks/appleblox@dev.rb" | cut -d '"' -f 2)
+          CURRENT_DEV_VERSION=$(grep -Eo 'version ".+"' "Casks/appleblox@dev.rb" | head -1 | cut -d '"' -f 2)
           if [ "${CURRENT_DEV_VERSION}" == "${DEV_VERSION}" ]; then
             echo "[debug] appleblox@dev is already at the latest version (${DEV_VERSION}). Skipping update."
           else
@@ -142,21 +191,51 @@ jobs:
             fetch_dev_download() {
               local arch=$1
               local url="https://nightly.link/${REPO}/workflows/build/dev/AppleBlox-${arch}-${DEV_VERSION}.pkg.zip"
+              local output="dev_${arch}.zip"
               echo "[debug] Downloading ${arch} from ${url}" >&2
-              log_cmd curl -sL "${url}" -o "dev_${arch}.zip"
+              if ! log_cmd curl -sfL --retry 3 --retry-delay 5 --max-time 120 "${url}" -o "${output}"; then
+                echo "[error] Failed to download ${arch} build from ${url}" >&2
+                return 1
+              fi
+              # Validate the download is a real file (not an error page)
+              local file_size
+              file_size=$(wc -c < "${output}" | tr -d ' ')
+              if [ "${file_size}" -lt 1000 ]; then
+                echo "[error] Downloaded ${arch} file is suspiciously small (${file_size} bytes)" >&2
+                return 1
+              fi
+              if ! file "${output}" | grep -qi 'zip'; then
+                echo "[error] Downloaded ${arch} file is not a valid zip archive" >&2
+                echo "[debug] File type: $(file "${output}")" >&2
+                return 1
+              fi
             }
 
+            # Run downloads in parallel and track their exit codes
             fetch_dev_download "arm64" &
+            PID_ARM=$!
             fetch_dev_download "x64" &
-            wait
+            PID_INTEL=$!
 
-            DEV_SHA_ARM=$(log_cmd shasum -a 256 "dev_arm64.zip" | awk '{print $1}')
-            DEV_SHA_INTEL=$(log_cmd shasum -a 256 "dev_x64.zip" | awk '{print $1}')
-
-            if [ -z "${DEV_SHA_ARM}" ] || [ -z "${DEV_SHA_INTEL}" ]; then
-              echo "[error] Missing dev assets for ${DEV_VERSION}" >&2
+            DOWNLOAD_FAILED=0
+            if ! wait ${PID_ARM}; then
+              echo "[error] ARM download failed" >&2
+              DOWNLOAD_FAILED=1
+            fi
+            if ! wait ${PID_INTEL}; then
+              echo "[error] Intel download failed" >&2
+              DOWNLOAD_FAILED=1
+            fi
+            if [ "${DOWNLOAD_FAILED}" -eq 1 ]; then
+              rm -f dev_*.zip
               exit 1
             fi
+
+            DEV_SHA_ARM=$(shasum -a 256 "dev_arm64.zip" | awk '{print $1}')
+            DEV_SHA_INTEL=$(shasum -a 256 "dev_x64.zip" | awk '{print $1}')
+
+            echo "[debug] ARM SHA  : ${DEV_SHA_ARM}"
+            echo "[debug] Intel SHA: ${DEV_SHA_INTEL}"
 
             update_cask "appleblox@dev" "${DEV_VERSION}" "${DEV_SHA_ARM}" "${DEV_SHA_INTEL}"
 
@@ -166,24 +245,19 @@ jobs:
 
       - name: Commit and Push Changes
         run: |
-          log_cmd() {
-            local timestamp=$(date +'%Y-%m-%d %H:%M:%S')
-            echo "[$timestamp] [exec] $*" >&2
-            echo "[$timestamp] [info] Command ran with $(($# - 1)) parameters" >&2
-            "$@"
-          }
+          set -euo pipefail
 
           echo "[debug] Checking for changes..."
-          log_cmd git status
+          git status
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
             echo "[debug] Diff of changes to be committed:"
             git diff --cached
-            
-            log_cmd git config --global user.name "github-actions[bot]"
-            log_cmd git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            log_cmd git commit -m "chore: update appleblox casks"
-            log_cmd git push
+
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore: update appleblox casks"
+            git push
           fi
