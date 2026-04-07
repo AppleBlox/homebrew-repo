@@ -1,9 +1,9 @@
 cask "appleblox@dev" do
-  arch arm: "arm64", intel: "x64"
+  arch arm: "arm64", intel: "2d86b0f052369d6111c74ed18d0bc9ec2edcee835cf99f0b4eb8f88c6f2ad347"
 
-  version "0.9.0-dev.44"
-  sha256 arm:   "e77b54adaca0dbd3cc8f2591a44e8143ed9a7c7ae564277a09ce929ecf3b504b",
-         intel: "d1e9cc30a3054862fbb1abfb26b0f0ee7f05a1c889ce9d910118577adf39393c"
+  version "0.9.1-dev.0"
+  sha256 arm:   "e38c8d46630bc4a58a1f8097c27065dbac51b1351b5627fb1d8b60eaa364166d",
+         intel: "2d86b0f052369d6111c74ed18d0bc9ec2edcee835cf99f0b4eb8f88c6f2ad347"
 
   url "https://nightly.link/AppleBlox/appleblox/workflows/build/dev/AppleBlox-#{arch}-#{version}.pkg.zip",
       verified: "nightly.link/AppleBlox/appleblox/"
