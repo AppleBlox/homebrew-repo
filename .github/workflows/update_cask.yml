@@ -112,8 +112,13 @@ jobs:
               log_cmd env NEW_VERSION="${NEW_VERSION}" SHA256_ARM="${SHA256_ARM}" SHA256_INTEL="${SHA256_INTEL}" ruby -e '
                 content = File.read(ARGV[0])
                 original = content.dup
+                # Update version
                 content.sub!(/(version\s+)"[^"]+"/, "\\1\"#{ENV["NEW_VERSION"]}\"")
-                content.sub!(/(sha256\s+arm:\s+)"[^"]+"(,\s+intel:\s+)"[^"]+"/, "\\1\"#{ENV["SHA256_ARM"]}\"\\2\"#{ENV["SHA256_INTEL"]}\"")
+                # Update sha256 ARM (multiline aware)
+                content.sub!(/(sha256\s+arm:\s+)"[^"]+"/, "\\1\"#{ENV["SHA256_ARM"]}\"")
+                # Update sha256 Intel (multiline aware)
+                content.sub!(/(intel:\s+)"[^"]+"/, "\\1\"#{ENV["SHA256_INTEL"]}\"")
+                
                 if content == original
                   STDERR.puts "[error] Ruby patching made no changes to #{ARGV[0]}"
                   exit 1
@@ -145,8 +150,10 @@ jobs:
           # STABLE BUILD
           # ========================
           echo "--- STABLE BUILD ---"
-          STABLE_VERSION=$(log_cmd gh release list -R "${REPO}" --limit 1 \
-            --exclude-drafts --exclude-pre-releases --json tagName -q '.[0].tagName')
+          # Get the latest non-draft release (regardless of pre-release status, as AppleBlox often uses pre-release for major builds)
+          STABLE_VERSION=$(log_cmd gh release list -R "${REPO}" --limit 10 --json tagName,isPrerelease,isDraft \
+            -q '[.[] | select(.isDraft == false)] | first | .tagName // empty')
+
           if [ -z "${STABLE_VERSION}" ]; then
             echo "[error] Could not determine latest stable version" >&2
             exit 1
