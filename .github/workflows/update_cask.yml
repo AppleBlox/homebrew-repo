@@ -150,31 +150,35 @@ jobs:
           # STABLE BUILD
           # ========================
           echo "--- STABLE BUILD ---"
+          # Debug: List all available releases to stdout for better troubleshooting
+          echo "[debug] Available releases:" >&2
+          gh release list -R "${REPO}" --json tagName,isDraft,isPrerelease -q '.[] | "\(.tagName) (Prerelease: \(.isPrerelease), Draft: \(.isDraft))"' || echo "[debug] No releases found" >&2
+
           # Get the latest non-draft release (regardless of pre-release status, as AppleBlox often uses pre-release for major builds)
-          STABLE_VERSION=$(log_cmd gh release list -R "${REPO}" --limit 10 --json tagName,isPrerelease,isDraft \
-            -q '[.[] | select(.isDraft == false)] | first | .tagName // empty')
+          STABLE_VERSION=$(gh release list -R "${REPO}" --limit 10 --json tagName,isDraft \
+            -q '[.[] | select(.isDraft == false)] | .[0].tagName // empty' 2>/dev/null || echo "")
 
           if [ -z "${STABLE_VERSION}" ]; then
-            echo "[error] Could not determine latest stable version" >&2
-            exit 1
-          fi
-          echo "[debug] Latest Stable: ${STABLE_VERSION}"
-
-          CURRENT_STABLE_VERSION=$(grep -Eo 'version ".+"' "Casks/appleblox.rb" | head -1 | cut -d '"' -f 2)
-          if [ "${CURRENT_STABLE_VERSION}" == "${STABLE_VERSION}" ]; then
-            echo "[debug] appleblox is already at the latest version (${STABLE_VERSION}). Skipping update."
+            echo "[warning] Could not determine latest stable version. Skipping stable build update." >&2
           else
-            # Fetch the full release JSON once, then extract what we need with jq
-            echo "[debug] Fetching assets for version ${STABLE_VERSION}"
-            RELEASE_JSON=$(log_cmd gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets)
+            echo "[debug] Latest Stable: ${STABLE_VERSION}"
 
-            STABLE_SHA_ARM=$(extract_digest "${RELEASE_JSON}" "_arm64\\.dmg$" "stable ARM")
-            STABLE_SHA_INTEL=$(extract_digest "${RELEASE_JSON}" "_x64\\.dmg$" "stable Intel")
+            CURRENT_STABLE_VERSION=$(grep -Eo 'version ".+"' "Casks/appleblox.rb" | head -1 | cut -d '"' -f 2)
+            if [ "${CURRENT_STABLE_VERSION}" == "${STABLE_VERSION}" ]; then
+              echo "[debug] appleblox is already at the latest version (${STABLE_VERSION}). Skipping update."
+            else
+              # Fetch the full release JSON once, then extract what we need with jq
+              echo "[debug] Fetching assets for version ${STABLE_VERSION}"
+              RELEASE_JSON=$(gh release view "${STABLE_VERSION}" -R "${REPO}" --json assets)
 
-            echo "[debug] ARM SHA  : ${STABLE_SHA_ARM}"
-            echo "[debug] Intel SHA: ${STABLE_SHA_INTEL}"
+              STABLE_SHA_ARM=$(extract_digest "${RELEASE_JSON}" "_arm64\\.dmg$" "stable ARM")
+              STABLE_SHA_INTEL=$(extract_digest "${RELEASE_JSON}" "_x64\\.dmg$" "stable Intel")
 
-            update_cask "appleblox" "${STABLE_VERSION}" "${STABLE_SHA_ARM}" "${STABLE_SHA_INTEL}"
+              echo "[debug] ARM SHA  : ${STABLE_SHA_ARM}"
+              echo "[debug] Intel SHA: ${STABLE_SHA_INTEL}"
+
+              update_cask "appleblox" "${STABLE_VERSION}" "${STABLE_SHA_ARM}" "${STABLE_SHA_INTEL}"
+            fi
           fi
 
           # ========================
