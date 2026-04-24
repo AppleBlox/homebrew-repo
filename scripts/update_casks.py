@@ -108,7 +108,8 @@ def update_cask(
 ) -> bool:
     """
     Patch *cask_name* (.rb file in ``Casks/``) with *new_version* and the two
-    sha256 hashes, then ``git add`` the file.  Returns True on success.
+    sha256 hashes, then commit the file with a descriptive message.
+    Returns True on success.
     """
     cask_file = f"Casks/{cask_name}.rb"
     print(f"::group::Updating {cask_name} to {new_version}")
@@ -172,8 +173,10 @@ def update_cask(
     log.debug("\n%s", content)
     log.debug("--------------------------")
 
-    log.info("Staging changes for %s", cask_file)
+    # Commit with a descriptive message per Homebrew guidelines
+    log.info("Committing changes for %s", cask_file)
     run(["git", "add", cask_file])
+    run(["git", "commit", "-m", f"{cask_name} {new_version}"])
 
     print("::endgroup::")
     return True

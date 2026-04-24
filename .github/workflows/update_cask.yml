@@ -32,6 +32,11 @@ jobs:
           fi
           echo "::endgroup::"
 
+      - name: Configure Git Identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Update Casks
         env:
           GH_TOKEN: ${{ github.token }}
@@ -39,21 +44,14 @@ jobs:
         run: |
           python3 scripts/update_casks.py
 
-      - name: Commit and Push Changes
+      - name: Push Changes
         run: |
           set -euo pipefail
 
-          echo "[debug] Checking for changes..."
-          git status
-
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
+          if [ "$(git rev-parse HEAD)" = "$(git rev-parse @{u})" ]; then
+            echo "No new commits to push."
           else
-            echo "[debug] Diff of changes to be committed:"
-            git diff --cached
-
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "chore: update appleblox casks"
-            git push
+            echo "Pushing commits..."
+            git log --oneline @{u}..HEAD
+            git push --no-rebase
           fi
