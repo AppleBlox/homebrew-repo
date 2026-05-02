@@ -17,7 +17,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Debug Environment
         run: |
@@ -32,11 +32,6 @@ jobs:
           fi
           echo "::endgroup::"
 
-      - name: Configure Git Identity
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
       - name: Update Casks
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,14 +39,4 @@ jobs:
         run: |
           python3 scripts/update_casks.py
 
-      - name: Push Changes
-        run: |
-          set -euo pipefail
 
-          if [ "$(git rev-parse HEAD)" = "$(git rev-parse @{u})" ]; then
-            echo "No new commits to push."
-          else
-            echo "Pushing commits..."
-            git log --oneline @{u}..HEAD
-            git push --no-rebase
-          fi

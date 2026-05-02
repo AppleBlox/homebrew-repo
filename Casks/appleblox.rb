@@ -1,5 +1,5 @@
 cask "appleblox" do
-  arch arm: "arm64", intel: "558e75f01dddae480116c75565129c1f2aa50303a08fea7292af8a61aea0f33b"
+  arch arm: "arm64", intel: "x64"
 
   version "0.9.0"
   sha256 arm:   "fd7f9e3c4800b59d2600d242bb6e8ac7f5f683f85e1aad6a98e0a9b1d254faa0",

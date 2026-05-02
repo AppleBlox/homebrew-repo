@@ -150,7 +150,7 @@ def update_cask(
     # Patch sha256 arm (multi-line aware)
     content = re.sub(r'(sha256\s+arm:\s+)"[^"]+"', rf'\1"{sha256_arm}"', content)
     # Patch sha256 intel (multi-line aware)
-    content = re.sub(r'(intel:\s+)"[^"]+"', rf'\1"{sha256_intel}"', content)
+    content = re.sub(r'(\n\s+intel:\s+)"[^"]+"', rf'\1"{sha256_intel}"', content)
 
     if content == original:
         log.error("Patching made no changes to %s", cask_file)
@@ -173,10 +173,40 @@ def update_cask(
     log.debug("\n%s", content)
     log.debug("--------------------------")
 
-    # Commit with a descriptive message per Homebrew guidelines
-    log.info("Committing changes for %s", cask_file)
+    branch_name = f"update-{cask_name}-{new_version}"
+    
+    # Check if branch already exists remotely
+    result = run(["git", "ls-remote", "--heads", "origin", branch_name], check=False)
+    if result.stdout.strip():
+        log.info("Branch %s already exists remotely. Skipping.", branch_name)
+        # Revert changes to working tree
+        run(["git", "checkout", "--", cask_file])
+        print("::endgroup::")
+        return True
+
+    # Commit with a descriptive message and create PR per Homebrew guidelines
+    log.info("Creating branch %s and committing changes for %s", branch_name, cask_file)
+    run(["git", "checkout", "-b", branch_name])
     run(["git", "add", cask_file])
+    
+    log.info("[debug] Checking for changes...")
+    run(["git", "status"], check=False)
+    
+    log.info("[debug] Diff of changes to be committed:")
+    run(["git", "diff", "--cached"], check=False)
+
     run(["git", "commit", "-m", f"{cask_name} {new_version}"])
+    run(["git", "push", "-u", "origin", branch_name])
+    
+    log.info("Creating PR for %s %s", cask_name, new_version)
+    run(["gh", "pr", "create", 
+         "--title", f"{cask_name} {new_version}", 
+         "--body", f"Automated cask update for {cask_name} to version {new_version}.",
+         "--head", branch_name, 
+         "--base", "main"], check=False)
+    
+    # Switch back to previous branch
+    run(["git", "checkout", "-"])
 
     print("::endgroup::")
     return True
@@ -218,7 +248,7 @@ def handle_stable() -> bool:
         log.warning("Could not determine latest stable version. Skipping stable build update.")
         return True
 
-    version = active[0]["tagName"]
+    version = active[0]["tagName"].lstrip("v")
     log.info("Latest Stable: %s", version)
 
     current = get_cask_version("Casks/appleblox.rb")
@@ -356,7 +386,15 @@ def handle_dev() -> bool:
 # Main
 # ---------------------------------------------------------------------------
 
+def setup_environment():
+    print("::group::Configure Git Identity")
+    run(["git", "config", "--global", "user.name", "github-actions[bot]"], check=False)
+    run(["git", "config", "--global", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=False)
+    print("::endgroup::")
+
 def main() -> int:
+    setup_environment()
+    
     ok = True
 
     if not handle_stable():
