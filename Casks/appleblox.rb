@@ -2,8 +2,8 @@ cask "appleblox" do
   arch arm: "arm64", intel: "x64"
 
   version "0.9.0"
-  sha256 arm:   "fd7f9e3c4800b59d2600d242bb6e8ac7f5f683f85e1aad6a98e0a9b1d254faa0",
-         intel: "558e75f01dddae480116c75565129c1f2aa50303a08fea7292af8a61aea0f33b"
+  sha256 arm:   "d3344acdf54173f1bdbc98ffb11e843bc7b57b4c9e007646be7d20a62ac44220",
+         intel: "72288d67e7271b8e9ff080f50363470f634ba39a07e552a12dbde7b74c01f0f0"
 
   url "https://github.com/AppleBlox/appleblox/releases/download/#{version}/AppleBlox-#{version}_#{arch}.dmg",
       verified: "github.com/AppleBlox/appleblox/"
