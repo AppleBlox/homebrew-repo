@@ -19,7 +19,10 @@ cask "appleblox" do
   conflicts_with cask: "appleblox@dev"
   depends_on cask: "roblox"
 
-  app "AppleBlox.app"
+  pkg "Install AppleBlox.pkg"
+
+  uninstall pkgutil: "com.appleblox.pkg",
+            delete:  "/Applications/AppleBlox.app"
 
   zap trash: [
     "~/Library/Application Support/appleblox",

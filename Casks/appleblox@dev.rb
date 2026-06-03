@@ -21,11 +21,10 @@ cask "appleblox@dev" do
   conflicts_with cask: "appleblox"
   depends_on cask: "roblox"
 
-  app "expanded/AppleBlox.pkg/Payload/AppleBlox.app"
+  pkg "AppleBlox-#{arch}-#{version}.pkg"
 
-  preflight do
-    system_command "pkgutil", args: ["--expand-full", "#{staged_path}/AppleBlox-#{arch}-#{version}.pkg", "#{staged_path}/expanded"]
-  end
+  uninstall pkgutil: "com.appleblox.pkg",
+            delete:  "/Applications/AppleBlox.app"
 
   zap trash: [
     "~/Library/Application Support/appleblox",

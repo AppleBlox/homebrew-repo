@@ -19,19 +19,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      - name: Debug Environment
-        run: |
-          echo "::group::System Information"
-          echo "Time: $(date)"
-          if [[ "$OSTYPE" == "darwin"* ]]; then
-            echo "OS: macOS"
-            sw_vers
-          else
-            echo "OS: Linux"
-            cat /etc/os-release
-          fi
-          echo "::endgroup::"
-
       - name: Update Casks
         env:
           GH_TOKEN: ${{ github.token }}

@@ -387,6 +387,18 @@ def handle_dev() -> bool:
 # ---------------------------------------------------------------------------
 
 def setup_environment():
+    print("::group::System Information")
+    import platform
+    import datetime
+    print(f"Time: {datetime.datetime.now()}")
+    if sys.platform == "darwin":
+        print("OS: macOS")
+        run(["sw_vers"], check=False)
+    else:
+        print("OS: Linux")
+        run(["cat", "/etc/os-release"], check=False)
+    print("::endgroup::")
+    
     print("::group::Configure Git Identity")
     run(["git", "config", "--global", "user.name", "github-actions[bot]"], check=False)
     run(["git", "config", "--global", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=False)
